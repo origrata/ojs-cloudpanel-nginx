@@ -1,0 +1,75 @@
+server {
+  listen 80;
+  listen [::]:80;
+  listen 443 quic;
+  listen 443 ssl;
+  listen [::]:443 quic;
+  listen [::]:443 ssl;
+  http2 on;
+  http3 off;
+  {{ssl_certificate_key}}
+  {{ssl_certificate}}
+  server_name nama_domain_ejurnal;
+  {{root}}
+  
+   add_header X-Frame-Options "SAMEORIGIN";
+   add_header X-XSS-Protection "1; mode=block";
+   add_header X-Content-Type-Options "nosniff";
+
+  {{nginx_access_log}}
+  {{nginx_error_log}}
+
+  if ($scheme != "https") {
+    rewrite ^ https://$host$request_uri permanent;
+  }
+
+  location ~ /.well-known {
+    auth_basic off;
+    allow all;
+  }
+
+  {{settings}}
+
+  include /etc/nginx/global_settings;
+  
+  index index.php index.html;
+   location / {
+                try_files $uri $uri/ /index.php?$args;
+
+                if (!-e $request_filename) {
+                    rewrite ^/(.*)$ /index.php/$1 last;
+                break;
+                }
+        }
+
+        location = /favicon.ico { access_log off; log_not_found off; }
+        location = /robots.txt  { access_log off; log_not_found off; }
+
+       
+   location ~ ^(.+\.php)(.*)$ {
+          set $path_info $fastcgi_path_info;
+          fastcgi_split_path_info ^(.+\.php)(.*)$;
+          fastcgi_param PATH_INFO $path_info;
+          fastcgi_param PATH_TRANSLATED $document_root$path_info;
+
+        if (!-f $document_root$fastcgi_script_name) {
+            return 404;
+        }
+        include fastcgi_params;
+
+        # gunakan versi php yang anda instalasi pada server
+         # fastcgi_pass unix:/var/run/php/php8.1-fpm.sock;
+          fastcgi_pass 127.0.0.1:{{php_fpm_port}};
+          fastcgi_param PHP_VALUE "{{php_settings}}";
+          fastcgi_index index.php;
+          fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        }
+
+  location ~* ^.+\.(css|js|jpg|jpeg|gif|png|ico|gz|svg|svgz|ttf|otf|woff|woff2|eot|mp4|ogg|ogv|webm|webp|zip|swf)$ {
+    add_header Access-Control-Allow-Origin "*";
+    add_header alt-svc 'h3=":443"; ma=86400';
+    expires max;
+    access_log off;
+  }
+
+}
